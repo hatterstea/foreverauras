@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: Forever Auras: Druid - Balance
+## Notes: Minimal Balance debuff maintenance tracker for WoW Forever.
+## Author: Ally
+## Version: 0.1.0
+## SavedVariables: ForeverAurasDruidBalanceDB
+
+ForeverAuras_Druid_Balance.lua
