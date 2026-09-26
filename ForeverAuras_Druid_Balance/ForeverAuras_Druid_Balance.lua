@@ -34,7 +34,7 @@ local ICON_SIZE = 35
 local ICON_SPACING = 5
 local NORMAL_WARNING = 3.0
 local FAERIE_WARNING = 10.0
-local FAERIE_MEMORY = 50.0
+local FAERIE_POST_COMBAT_GRACE = 20.0
 local UPDATE_RATE = 0.05
 local TARGET_MEMORY_TTL = 15 * 60
 
@@ -587,7 +587,12 @@ local function RecordSpellOnUnit(spellID, unitKey)
     if record.key == "FAERIE_FIRE" then
         state.faerie.spellID = spellID
         state.faerie.expiration = expires
-        state.faerie.armedUntil = now + FAERIE_MEMORY
+
+        if InCombatLockdown and InCombatLockdown() then
+            state.faerie.armedUntil = math.huge
+        else
+            state.faerie.armedUntil = now + FAERIE_POST_COMBAT_GRACE
+        end
 
     elseif record.key == "MOONFIRE" then
         state.moonfire.spellID = spellID
@@ -618,7 +623,7 @@ local function MatchAuraToState(state, aura)
     if name == SPELLS.FAERIE_FIRE.name then
         state.faerie.spellID = spellID or SPELLS.FAERIE_FIRE.iconID
         state.faerie.expiration = expiration
-        state.faerie.armedUntil = expiration + FAERIE_WARNING
+        state.faerie.armedUntil = GetTime() + FAERIE_POST_COMBAT_GRACE
 
     elseif name == SPELLS.MOONFIRE.name then
         state.moonfire.spellID = spellID or SPELLS.MOONFIRE.iconID
@@ -692,7 +697,29 @@ local function CheckNameplates()
         Print("Warning: enemy nameplates are disabled. Forever Auras uses nameplates to distinguish enemies when GUIDs are restricted, so target-swapping tracking may not work.")
     end
 end
+local function HoldArmedFaerieThroughCombat()
+    local now = GetTime()
 
+    for _, state in pairs(targets) do
+        local faerie = state and state.faerie
+
+        if faerie and faerie.armedUntil and faerie.armedUntil > now then
+            faerie.armedUntil = math.huge
+        end
+    end
+end
+
+local function ReleaseFaerieAfterCombat()
+    local now = GetTime()
+
+    for _, state in pairs(targets) do
+        local faerie = state and state.faerie
+
+        if faerie and faerie.armedUntil and faerie.armedUntil > now then
+            faerie.armedUntil = now + FAERIE_POST_COMBAT_GRACE
+        end
+    end
+end
 -- ==========================================================================
 -- Events
 -- ==========================================================================
@@ -702,6 +729,7 @@ FA:RegisterEvent("PLAYER_ENTERING_WORLD")
 FA:RegisterEvent("PLAYER_TARGET_CHANGED")
 FA:RegisterEvent("PLAYER_FOCUS_CHANGED")
 FA:RegisterEvent("PLAYER_REGEN_ENABLED")
+FA:RegisterEvent("PLAYER_REGEN_DISABLED")
 FA:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 FA:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 FA:RegisterUnitEvent("UNIT_AURA", "target", "focus")
@@ -775,10 +803,15 @@ FA:SetScript("OnEvent", function(self, event, ...)
             targets[plate] = nil
             plateKeysByUnit[unit] = nil
         end
-
+    
+    elseif event == "PLAYER_REGEN_DISABLED" then
+    HoldArmedFaerieThroughCombat()
+    UpdateDisplay()
+        
     elseif event == "PLAYER_REGEN_ENABLED" then
         ScanTargetOutOfCombat()
         ScanFocusOutOfCombat()
+        ReleaseFaerieAfterCombat()
         CleanupOldTargets()
         UpdateDisplay()
 
